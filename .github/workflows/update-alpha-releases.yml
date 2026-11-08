@@ -1,0 +1,50 @@
+name: Update Porffor alpha releases
+
+on:
+  schedule:
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-alpha-releases
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: true
+
+      - name: Check release updater
+        run: python3 -m unittest discover -s tests
+
+      - name: Discover published alpha releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/update-versions.py
+
+      - name: Commit version list update
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git add -- porffor.toml
+          if git diff --cached --quiet; then
+            echo "No version changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update Porffor alpha release versions"
+          # A concurrent branch update or branch protection rejects this push.
+          # Never force-push; the next run recomputes from the default branch.
+          git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"
